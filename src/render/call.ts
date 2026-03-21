@@ -6,6 +6,8 @@ interface PerplexityCallArgs {
   query?: unknown;
   recency?: unknown;
   limit?: unknown;
+  model?: unknown;
+  incognito?: unknown;
 }
 
 const RECENCY_VALUES = new Set(["hour", "day", "week", "month", "year"] as const);
@@ -16,9 +18,19 @@ export function renderPerplexityCall(args: PerplexityCallArgs, theme: Theme): Te
     ? recencyRaw
     : undefined;
   const limit = asPositiveInteger(args?.limit);
+  const model = asString(args?.model)?.trim();
+  const incognito = typeof args?.incognito === "boolean" ? args.incognito : undefined;
 
   let text = theme.fg("toolTitle", theme.bold("perplexity_search "));
   text += query ? theme.fg("muted", truncate(query, 90)) : theme.fg("warning", "(missing query)");
+
+  if (model) {
+    text += theme.fg("dim", ` • ${model}`);
+  }
+
+  if (typeof incognito === "boolean") {
+    text += theme.fg("dim", ` • incognito ${incognito ? "on" : "off"}`);
+  }
 
   if (recency) {
     text += theme.fg("dim", ` • ${recency}`);

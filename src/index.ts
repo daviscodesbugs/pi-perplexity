@@ -2,23 +2,25 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
+import { registerPerplexityConfigCommand } from "./commands/config.js";
 import { registerPerplexityCommands } from "./commands/login.js";
 
 import { authenticate } from "./auth/login.js";
-
+import { clearToken } from "./auth/storage.js";
+import { loadConfig, resolveSearchDefaults } from "./config.js";
 import { formatForLLM } from "./search/format.js";
 import { searchPerplexity } from "./search/client.js";
 import { renderPerplexityCall } from "./render/call.js";
 import { renderPerplexityResult } from "./render/result.js";
 import { AuthError, SearchError } from "./search/types.js";
-import { errorMessage } from "./render/util.js";
 
 export default function (pi: ExtensionAPI) {
   registerPerplexityCommands(pi);
+  registerPerplexityConfigCommand(pi);
   pi.registerTool({
     name: "perplexity_search",
     label: "Perplexity Search",
-    description: "Search the web with your Perplexity subscription.",
+    description: "Search the web using Perplexity",
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
       recency: Type.Optional(
@@ -29,6 +31,8 @@ export default function (pi: ExtensionAPI) {
       limit: Type.Optional(
         Type.Number({ description: "Max sources to return", minimum: 1, maximum: 50 }),
       ),
+      model: Type.Optional(Type.String({ description: "Model preference" })),
+      incognito: Type.Optional(Type.Boolean({ description: "Hide search from Perplexity history" })),
     }),
     renderCall: renderPerplexityCall,
     renderResult: renderPerplexityResult,
@@ -50,13 +54,11 @@ export default function (pi: ExtensionAPI) {
           return ctx.ui.input(label, placeholder);
         };
 
-        const authOptions: Parameters<typeof authenticate>[0] = {
+        const jwt = await authenticate({
+          ...(signal !== undefined ? { signal } : {}),
           promptForEmail: async () => promptInput("Perplexity email", "you@example.com"),
           promptForOtp: async (email) => promptInput(`Enter OTP sent to ${email}`, "123456"),
-        };
-        if (signal) authOptions.signal = signal;
-
-        const jwt = await authenticate(authOptions);
+        });
 
         if (signal?.aborted) {
           return {
@@ -70,13 +72,26 @@ export default function (pi: ExtensionAPI) {
           details: { toolCallId },
         });
 
-        const searchParams: Parameters<typeof searchPerplexity>[0] = {
-          query: params.query,
-        };
-        if (params.recency) searchParams.recency = params.recency;
-        if (typeof params.limit === "number") searchParams.limit = params.limit;
+        const config = await loadConfig();
+        const { model, incognito } = resolveSearchDefaults(
+          {
+            ...(params.model !== undefined ? { model: params.model } : {}),
+            ...(params.incognito !== undefined ? { incognito: params.incognito } : {}),
+          },
+          config,
+        );
 
-        const result = await searchPerplexity(searchParams, jwt, signal);
+        const result = await searchPerplexity(
+          {
+            query: params.query,
+            model,
+            incognito,
+            ...(params.recency !== undefined ? { recency: params.recency } : {}),
+            ...(params.limit !== undefined ? { limit: params.limit } : {}),
+          },
+          jwt,
+          signal,
+        );
 
         const formatted = formatForLLM(result, params.limit);
         sourceCount =
@@ -88,6 +103,7 @@ export default function (pi: ExtensionAPI) {
           content: [{ type: "text", text: formatted }],
           details: {
             model: result.displayModel,
+            incognito,
             sourceCount,
             queryMs: Date.now() - start,
             uuid: result.uuid,
@@ -99,29 +115,17 @@ export default function (pi: ExtensionAPI) {
         if (error instanceof AuthError) {
           return {
             content: [{ type: "text", text: `Authentication failed: ${error.message}` }],
-            details: { sourceCount, queryMs, isError: true },
+            details: { sourceCount, queryMs },
           };
         }
 
         if (error instanceof SearchError) {
           if (error.code === "AUTH") {
-            // Do NOT clear the token here. The user must re-login explicitly via
-            // /perplexity-login --force. Clearing automatically would silently discard
-            // a token that may still be valid (e.g. a transient 401), and removes the
-            // user's ability to inspect or recover the cached credential themselves.
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Perplexity authentication failed. Run /perplexity-login --force to re-authenticate.`,
-                },
-              ],
-              details: { sourceCount, queryMs, isError: true },
-            };
+            await clearToken().catch(() => undefined);
           }
           return {
             content: [{ type: "text", text: `Perplexity search failed: ${error.message}` }],
-            details: { sourceCount, queryMs, isError: true },
+            details: { sourceCount, queryMs },
           };
         }
 
@@ -129,10 +133,10 @@ export default function (pi: ExtensionAPI) {
           content: [
             {
               type: "text",
-              text: `Perplexity search failed: ${errorMessage(error)}`,
+              text: `Perplexity search failed: ${(error as Error).message || "Unknown error"}`,
             },
           ],
-          details: { sourceCount, queryMs, isError: true },
+          details: { sourceCount, queryMs },
         };
       }
     },

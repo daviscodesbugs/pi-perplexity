@@ -4,6 +4,7 @@ import { asString, asNumber, truncate } from "./util.js";
 
 interface PerplexityResultDetails {
   model?: unknown;
+  incognito?: unknown;
   sourceCount?: unknown;
   queryMs?: unknown;
   uuid?: unknown;
@@ -69,9 +70,16 @@ export function renderPerplexityResult(
   const sourceCount = asNumber(details.sourceCount);
   const queryMs = asNumber(details.queryMs);
   const model = asString(details.model)?.trim();
+  const incognito = typeof details.incognito === "boolean" ? details.incognito : undefined;
   const uuid = asString(details.uuid)?.trim();
 
   let text = theme.fg("success", "✓ Perplexity");
+  if (model) {
+    text += theme.fg("dim", ` • ${model}`);
+  }
+  if (typeof incognito === "boolean") {
+    text += theme.fg("dim", ` • incognito ${incognito ? "on" : "off"}`);
+  }
   if (typeof sourceCount === "number") {
     text += theme.fg("muted", ` • ${sourceCount} source${sourceCount === 1 ? "" : "s"}`);
   }
@@ -90,9 +98,6 @@ export function renderPerplexityResult(
     return new Text(text, 0, 0);
   }
 
-  if (model) {
-    text += `\n${theme.fg("dim", `model: ${model}`)}`;
-  }
   if (uuid) {
     text += `\n${theme.fg("dim", `id: ${uuid}`)}`;
   }

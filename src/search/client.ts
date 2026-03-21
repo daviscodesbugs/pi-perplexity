@@ -105,6 +105,8 @@ export interface SearchParams {
   query: string;
   recency?: "hour" | "day" | "week" | "month" | "year";
   limit?: number;
+  model: string;
+  incognito: boolean;
 }
 
 function normalizeUrl(url: string): string {
@@ -209,7 +211,7 @@ function buildRequestBody(params: SearchParams): Record<string, unknown> {
       query_str: query,
       search_focus: "internet",
       mode: "copilot",
-      model_preference: "pplx_pro_upgraded",
+      model_preference: params.model,
       sources: ["web"],
       attachments: [],
       frontend_uuid: crypto.randomUUID(),
@@ -218,7 +220,7 @@ function buildRequestBody(params: SearchParams): Record<string, unknown> {
       language: "en-US",
       timezone,
       search_recency_filter: params.recency ?? null,
-      is_incognito: true,
+      is_incognito: params.incognito,
       use_schematized_api: true,
       skip_search_enabled: true,
     },

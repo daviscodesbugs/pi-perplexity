@@ -56,6 +56,8 @@ Once installed, the agent automatically calls `perplexity_search` whenever it ne
 | `query` | string | ✅ | The search query |
 | `recency` | string | — | Filter by age: `hour` · `day` · `week` · `month` · `year` |
 | `limit` | number | — | Max sources to include (1–50) |
+| `model` | string | — | Model preference, e.g. `pplx_pro_upgraded`, `pplx_pro`, `experimental`, `gpt54`, `gpt54_thinking`, `claude46sonnet`, `claude46sonnetthinking`, `gemini31pro_high`, `nv_nemotron_3_super`, `pplx_reasoning`, `pplx_alpha` |
+| `incognito` | boolean | — | Whether to hide the search from Perplexity history; defaults to `true` |
 
 ### Output format
 
@@ -80,7 +82,7 @@ Provider: perplexity (oauth)
 Model: pplx_pro_upgraded
 ```
 
-All queries use `is_incognito: true` — nothing shows up in your Perplexity history.
+Queries default to `is_incognito: true`, but you can override that per call or via config.
 
 ## How It Works
 

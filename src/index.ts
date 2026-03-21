@@ -12,6 +12,7 @@ import { formatForLLM } from "./search/format.js";
 import { searchPerplexity } from "./search/client.js";
 import { renderPerplexityCall } from "./render/call.js";
 import { renderPerplexityResult } from "./render/result.js";
+import { errorMessage } from "./render/util.js";
 import { AuthError, SearchError } from "./search/types.js";
 
 export default function (pi: ExtensionAPI) {
@@ -115,17 +116,18 @@ export default function (pi: ExtensionAPI) {
         if (error instanceof AuthError) {
           return {
             content: [{ type: "text", text: `Authentication failed: ${error.message}` }],
-            details: { sourceCount, queryMs },
+            details: { sourceCount, queryMs, isError: true },
           };
         }
 
         if (error instanceof SearchError) {
           if (error.code === "AUTH") {
+            // Clear cached token on auth rejection so next call triggers re-login.
             await clearToken().catch(() => undefined);
           }
           return {
             content: [{ type: "text", text: `Perplexity search failed: ${error.message}` }],
-            details: { sourceCount, queryMs },
+            details: { sourceCount, queryMs, isError: true },
           };
         }
 
@@ -133,10 +135,10 @@ export default function (pi: ExtensionAPI) {
           content: [
             {
               type: "text",
-              text: `Perplexity search failed: ${(error as Error).message || "Unknown error"}`,
+              text: `Perplexity search failed: ${errorMessage(error)}`,
             },
           ],
-          details: { sourceCount, queryMs },
+          details: { sourceCount, queryMs, isError: true },
         };
       }
     },

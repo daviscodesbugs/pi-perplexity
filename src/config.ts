@@ -56,7 +56,7 @@ export function resolveSearchDefaults(
   params: { model?: string; incognito?: boolean },
   config: PerplexityConfig,
 ): { model: string; incognito: boolean } {
-  const envModel = process.env.PI_PERPLEXITY_MODEL || undefined;
+  const envModel = process.env.PI_PERPLEXITY_MODEL?.trim() || undefined;
   const envIncognito = process.env.PI_PERPLEXITY_INCOGNITO || undefined;
 
   const model = params.model

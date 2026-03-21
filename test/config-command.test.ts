@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { registerPerplexityConfigCommand } from "../src/commands/config.js";
-import { loadConfig, saveConfig } from "../src/config.js";
+
+let loadConfig: (configPath?: string) => Promise<import("../src/config.js").PerplexityConfig>;
+let saveConfig: (config: import("../src/config.js").PerplexityConfig, configPath?: string) => Promise<void>;
 
 let tempDir: string;
 let configPath: string;
@@ -12,6 +14,10 @@ let configPath: string;
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "pi-perplexity-command-test-"));
   configPath = join(tempDir, "config.json");
+
+  const mod = await import(`../src/config.ts?t=${Date.now()}`);
+  loadConfig = mod.loadConfig;
+  saveConfig = mod.saveConfig;
 });
 
 afterEach(async () => {

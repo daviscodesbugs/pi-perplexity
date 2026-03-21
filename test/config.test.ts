@@ -3,7 +3,12 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadConfig, saveConfig, resolveSearchDefaults } from "../src/config.js";
+let loadConfig: (configPath?: string) => Promise<import("../src/config.js").PerplexityConfig>;
+let saveConfig: (config: import("../src/config.js").PerplexityConfig, configPath?: string) => Promise<void>;
+let resolveSearchDefaults: (
+  params: { model?: string; incognito?: boolean },
+  config: import("../src/config.js").PerplexityConfig,
+) => { model: string; incognito: boolean };
 
 let tempDir: string;
 let configPath: string;
@@ -11,6 +16,11 @@ let configPath: string;
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "pi-perplexity-test-"));
   configPath = join(tempDir, "config.json");
+
+  const mod = await import(`../src/config.ts?t=${Date.now()}`);
+  loadConfig = mod.loadConfig;
+  saveConfig = mod.saveConfig;
+  resolveSearchDefaults = mod.resolveSearchDefaults;
 });
 
 afterEach(async () => {
@@ -116,6 +126,19 @@ describe("resolveSearchDefaults", () => {
       else process.env.PI_PERPLEXITY_MODEL = originalModel;
       if (originalIncognito === undefined) delete process.env.PI_PERPLEXITY_INCOGNITO;
       else process.env.PI_PERPLEXITY_INCOGNITO = originalIncognito;
+    }
+  });
+
+  test("whitespace-only model env var falls back to config", () => {
+    const originalModel = process.env.PI_PERPLEXITY_MODEL;
+    try {
+      process.env.PI_PERPLEXITY_MODEL = "   ";
+
+      const result = resolveSearchDefaults({}, { model: "gpt54" });
+      expect(result.model).toBe("gpt54");
+    } finally {
+      if (originalModel === undefined) delete process.env.PI_PERPLEXITY_MODEL;
+      else process.env.PI_PERPLEXITY_MODEL = originalModel;
     }
   });
 

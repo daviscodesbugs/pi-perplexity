@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import { searchPerplexity } from "../../src/search/client.js";
 import { SearchError } from "../../src/search/types.js";
+
+let searchPerplexity: typeof import("../../src/search/client.js").searchPerplexity;
 
 function createSseResponse(events: Array<Record<string, unknown>>, status = 200): Response {
   const streamText = [
@@ -17,6 +18,11 @@ function createSseResponse(events: Array<Record<string, unknown>>, status = 200)
 
 describe("searchPerplexity", () => {
   const originalFetch = globalThis.fetch;
+
+  beforeEach(async () => {
+    const mod = await import(`../../src/search/client.ts?t=${Date.now()}`);
+    searchPerplexity = mod.searchPerplexity;
+  });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;

@@ -19,6 +19,43 @@ afterEach(async () => {
 });
 
 describe("perplexity-config command", () => {
+  test("marks the configured model as current in the select options", async () => {
+    let handler: ((args: string, ctx: any) => Promise<void>) | undefined;
+
+    await saveConfig({ model: "gpt54", incognito: false }, configPath);
+
+    registerPerplexityConfigCommand(
+      {
+        registerCommand(name: string, command: { handler: (args: string, ctx: any) => Promise<void> }) {
+          expect(name).toBe("perplexity-config");
+          handler = command.handler;
+        },
+      } as any,
+      {
+        getConfigPath: () => configPath,
+        loadConfig: () => loadConfig(configPath),
+        saveConfig: (config) => saveConfig(config, configPath),
+      },
+    );
+
+    expect(handler).toBeDefined();
+
+    let options: string[] = [];
+
+    await handler!("", {
+      ui: {
+        select: async (_label: string, receivedOptions: string[]) => {
+          options = receivedOptions;
+          return "GPT-5.4 [current]";
+        },
+        confirm: async () => false,
+        notify: () => undefined,
+      },
+    });
+
+    expect(options).toContain("GPT-5.4 [current]");
+  });
+
   test("writes selected config to disk", async () => {
     let handler: ((args: string, ctx: any) => Promise<void>) | undefined;
 
@@ -41,7 +78,7 @@ describe("perplexity-config command", () => {
     const notifications: Array<{ message: string; level: string }> = [];
     await handler!("", {
       ui: {
-        select: async () => "GPT-5.4 (gpt54)",
+        select: async () => "GPT-5.4",
         confirm: async () => false,
         notify: (message: string, level: string) => notifications.push({ message, level }),
       },

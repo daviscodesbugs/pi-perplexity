@@ -29,6 +29,14 @@ function formatCurrentConfig(config: { model?: string; incognito?: boolean }): s
   return `Model: ${modelDisplay}\nIncognito: ${incognito}`;
 }
 
+function formatModelOption(model: { value: string; label: string }, currentModel?: string): string {
+  return model.value === currentModel ? `${model.label} [current]` : model.label;
+}
+
+function parseSelectedModel(selected: string): string {
+  return selected.replace(/ \[current\]$/, "");
+}
+
 interface ConfigCommandDeps {
   getConfigPath: () => string;
   loadConfig: () => Promise<PerplexityConfig>;
@@ -62,13 +70,15 @@ export function registerPerplexityConfigCommand(
           return;
         }
 
-        const modelLabels = KNOWN_MODELS.map((m) => `${m.label} (${m.value})`);
-        const selected = await ctx.ui.select("Default model", modelLabels);
+        const modelOptions = KNOWN_MODELS.map((model) => formatModelOption(model, config.model));
+        const selected = await ctx.ui.select("Default model", modelOptions);
         if (selected === undefined || selected === null) {
           ctx.ui.notify("Perplexity config unchanged.", "info");
           return;
         }
-        const selectedModel = KNOWN_MODELS[modelLabels.indexOf(selected)]?.value ?? selected;
+        const normalizedSelection = parseSelectedModel(selected);
+        const selectedModel = KNOWN_MODELS.find((model) => model.label === normalizedSelection)?.value
+          ?? normalizedSelection;
 
         const incognito = await ctx.ui.confirm(
           "Incognito mode",

@@ -28,19 +28,28 @@ describe("perplexity_search execute", () => {
     const { default: registerExtension } = await import(`../src/index.ts?test=${crypto.randomUUID()}`);
 
     let execute: ((toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: any, ctx?: any) => Promise<any>) | undefined;
+    let parameters: unknown;
 
     registerExtension({
       registerCommand() {
         return undefined;
       },
-      registerTool(tool: { execute: typeof execute }) {
+      registerTool(tool: { execute: typeof execute; parameters: unknown }) {
         execute = tool.execute;
+        parameters = tool.parameters;
       },
     } as any);
 
     expect(execute).toBeDefined();
+    expect(JSON.stringify(parameters)).not.toContain("model");
 
-    const result = await execute!("tool-1", { query: "how many planets" }, undefined, undefined, { ui: {} });
+    const result = await execute!(
+      "tool-1",
+      { query: "how many planets", model: "pplx_pro" },
+      undefined,
+      undefined,
+      { ui: {} },
+    );
 
     expect(loadConfig).toHaveBeenCalledTimes(1);
     expect(resolveSearchDefaults).toHaveBeenCalledWith({}, { model: "gpt54", incognito: false });

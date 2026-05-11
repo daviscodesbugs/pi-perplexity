@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-05-11
+
+### Changed
+
+- Model selection is now controlled by `/perplexity-config` or `PI_PERPLEXITY_MODEL` instead of an LLM-facing tool parameter.
+- Updated the configured model list with current Perplexity internal model slugs.
+
+### Added
+
+- Opt-in live E2E test for validating Perplexity model selection.
+
 ## [0.2.0] - 2026-03-21
 
 ### Added

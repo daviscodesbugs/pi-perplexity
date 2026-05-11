@@ -56,8 +56,9 @@ Once installed, the agent automatically calls `perplexity_search` whenever it ne
 | `query` | string | ✅ | The search query |
 | `recency` | string | — | Filter by age: `hour` · `day` · `week` · `month` · `year` |
 | `limit` | number | — | Max sources to include (1–50) |
-| `model` | string | — | Model preference, e.g. `pplx_pro_upgraded`, `pplx_pro`, `experimental`, `gpt54`, `gpt54_thinking`, `claude46sonnet`, `claude46sonnetthinking`, `gemini31pro_high`, `nv_nemotron_3_super`, `pplx_reasoning`, `pplx_alpha` |
 | `incognito` | boolean | — | Whether to hide the search from Perplexity history; defaults to `true` |
+
+Model selection is configured globally with `/perplexity-config` or `PI_PERPLEXITY_MODEL`; it is not exposed as a tool parameter, so agent-generated tool calls cannot accidentally override your configured model.
 
 ### Output format
 
@@ -96,6 +97,13 @@ When pi loads extensions under Node/jiti, direct `fetch` to Perplexity gets Clou
 bun install        # Install dev dependencies
 bun test           # Run tests
 bunx tsc --noEmit  # Type check
+```
+
+Optional live model-selection E2E test (requires cached auth from `/perplexity-login`):
+
+```bash
+PI_PERPLEXITY_E2E=1 bun test test/e2e-models.test.ts
+PI_PERPLEXITY_E2E=1 PI_PERPLEXITY_E2E_MODELS=pplx_pro_upgraded,gpt54 bun test test/e2e-models.test.ts
 ```
 
 ## License

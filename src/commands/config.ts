@@ -6,20 +6,7 @@ import {
   saveConfig as defaultSaveConfig,
   type PerplexityConfig,
 } from "../config.js";
-
-const KNOWN_MODELS: { value: string; label: string }[] = [
-  { value: "pplx_pro_upgraded", label: "Best (auto)" },
-  { value: "pplx_pro", label: "Default Pro" },
-  { value: "experimental", label: "Sonar" },
-  { value: "gpt54", label: "GPT-5.4" },
-  { value: "gpt54_thinking", label: "GPT-5.4 Thinking" },
-  { value: "claude46sonnet", label: "Claude 4.6 Sonnet" },
-  { value: "claude46sonnetthinking", label: "Claude 4.6 Sonnet Thinking" },
-  { value: "gemini31pro_high", label: "Gemini 3.1 Pro" },
-  { value: "nv_nemotron_3_super", label: "Nemotron 3 Super" },
-  { value: "pplx_reasoning", label: "Default Reasoning" },
-  { value: "pplx_alpha", label: "Deep Research" },
-];
+import { KNOWN_MODELS } from "../search/models.js";
 
 function formatCurrentConfig(config: { model?: string; incognito?: boolean }): string {
   const model = config.model ?? "pplx_pro_upgraded (default)";

@@ -32,7 +32,6 @@ export default function (pi: ExtensionAPI) {
       limit: Type.Optional(
         Type.Number({ description: "Max sources to return", minimum: 1, maximum: 50 }),
       ),
-      model: Type.Optional(Type.String({ description: "Model preference" })),
       incognito: Type.Optional(Type.Boolean({ description: "Hide search from Perplexity history" })),
     }),
     renderCall: renderPerplexityCall,
@@ -76,7 +75,6 @@ export default function (pi: ExtensionAPI) {
         const config = await loadConfig();
         const { model, incognito } = resolveSearchDefaults(
           {
-            ...(params.model !== undefined ? { model: params.model } : {}),
             ...(params.incognito !== undefined ? { incognito: params.incognito } : {}),
           },
           config,

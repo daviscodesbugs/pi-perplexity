@@ -166,6 +166,18 @@ function buildRequestHeaders(jwt: string, requestId: string): Record<string, str
   };
 }
 
+function isCloudflareChallenge(bodyText: string): boolean {
+	if (!bodyText) return false;
+	const sample = bodyText.slice(0, 4096).toLowerCase();
+	return (
+		sample.includes("just a moment") ||
+		sample.includes("cf-mitigated") ||
+		sample.includes("attention required") ||
+		sample.includes("cf-chl") ||
+		sample.includes("cloudflare")
+	);
+}
+
 function mapHttpError(status: number): SearchError {
   if (status === 401 || status === 403) {
     return new SearchError(
@@ -213,6 +225,13 @@ export async function searchPerplexity(
       "NETWORK",
       `Could not connect to Perplexity. ${errorMessage(error)}`,
     );
+  }
+
+  if (httpResult.status === 403 && isCloudflareChallenge(httpResult.bodyText)) {
+		throw new SearchError(
+			"NETWORK",
+			"Cloudflare blocked this request. The TLS impersonation profile may be stale — update pi-perplexity, or open an issue if you're already on the latest version.",
+		);
   }
 
   if (httpResult.status !== 200) {

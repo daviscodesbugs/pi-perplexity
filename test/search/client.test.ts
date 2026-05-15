@@ -325,4 +325,22 @@ describe("searchPerplexity", () => {
 			),
 		).rejects.toMatchObject({ name: "SearchError", code: "EMPTY" });
 	});
+
+	test("recognizes a Cloudflare challenge response", async () => {
+		const cfBody = '<!DOCTYPE html><html><head><title>Just a moment...</title></head>...';
+		const fakeHttp = async () => ({ status: 403, bodyText: cfBody });
+
+		await expect(
+			searchPerplexity(
+				{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+				"jwt",
+				undefined,
+				fakeHttp,
+			),
+		).rejects.toMatchObject({
+			name: "SearchError",
+			code: "NETWORK",
+			message: expect.stringMatching(/Cloudflare/i) as unknown as string,
+		});
+	});
 });

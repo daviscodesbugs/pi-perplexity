@@ -30,7 +30,7 @@
     "@sinclair/typebox": "*"
   },
   "dependencies": {
-    "bun": "^1.3.9"
+    "node-tls-client": "^2.1.0"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "*",
@@ -45,6 +45,6 @@
     "test": "bun test"
   },
   "engines": {
-    "bun": ">=1.3.9"
+    "node": ">=20"
   }
 }

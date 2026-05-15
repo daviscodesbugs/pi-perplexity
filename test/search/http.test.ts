@@ -4,10 +4,12 @@ describe("postWithFingerprint", () => {
 	let postWithFingerprint: typeof import("../../src/search/http.js").postWithFingerprint;
 	let sessionPostCalls: Array<{ url: string; init: Record<string, unknown> }>;
 	let sessionConstructorCalls: Array<Record<string, unknown>>;
+	let initTLSCalls: number;
 
 	beforeEach(async () => {
 		sessionPostCalls = [];
 		sessionConstructorCalls = [];
+		initTLSCalls = 0;
 
 		class FakeSession {
 			constructor(opts: Record<string, unknown>) {
@@ -28,9 +30,11 @@ describe("postWithFingerprint", () => {
 		mock.module("node-tls-client", () => ({
 			Session: FakeSession,
 			ClientIdentifier: { chrome_131: "chrome_131" },
+			initTLS: async () => { initTLSCalls++; },
+			destroyTLS: async () => {},
 		}));
 
-		const mod = await import(`../../src/search/http.ts?t=${Date.now()}`);
+		const mod = await import(`../../src/search/http.ts?t=${crypto.randomUUID()}`);
 		postWithFingerprint = mod.postWithFingerprint;
 	});
 
@@ -78,6 +82,16 @@ describe("postWithFingerprint", () => {
 		expect(sessionPostCalls).toHaveLength(0); // never made the request
 	});
 
+	test("calls initTLS once before the first request and not on subsequent calls", async () => {
+		await postWithFingerprint("https://example.com", {}, "body", undefined);
+		expect(initTLSCalls).toBe(1);
+		expect(sessionPostCalls).toHaveLength(1);
+
+		await postWithFingerprint("https://example.com", {}, "body", undefined);
+		expect(initTLSCalls).toBe(1); // still 1 — idempotent
+		expect(sessionPostCalls).toHaveLength(2);
+	});
+
 	test("throws AbortError if signal aborts during a slow request", async () => {
 		// Override the FakeSession.post for this test to hang
 		class SlowSession {
@@ -91,8 +105,10 @@ describe("postWithFingerprint", () => {
 		mock.module("node-tls-client", () => ({
 			Session: SlowSession,
 			ClientIdentifier: { chrome_131: "chrome_131" },
+			initTLS: async () => {},
+			destroyTLS: async () => {},
 		}));
-		const mod = await import(`../../src/search/http.ts?t=${Date.now()}slow`);
+		const mod = await import(`../../src/search/http.ts?t=${crypto.randomUUID()}-slow`);
 
 		const controller = new AbortController();
 		const pending = mod.postWithFingerprint("https://example.com", {}, "body", controller.signal);

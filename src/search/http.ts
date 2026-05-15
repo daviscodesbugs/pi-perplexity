@@ -1,4 +1,4 @@
-import { Session, ClientIdentifier } from "node-tls-client";
+import { Session, ClientIdentifier, initTLS } from "node-tls-client";
 
 export interface HttpResponse {
 	status: number;
@@ -9,9 +9,10 @@ let sessionPromise: Promise<InstanceType<typeof Session>> | null = null;
 
 function getSession(): Promise<InstanceType<typeof Session>> {
 	if (!sessionPromise) {
-		sessionPromise = Promise.resolve(
-			new Session({ clientIdentifier: ClientIdentifier.chrome_131 }),
-		);
+		sessionPromise = (async () => {
+			await initTLS();
+			return new Session({ clientIdentifier: ClientIdentifier.chrome_131 });
+		})();
 	}
 	return sessionPromise;
 }

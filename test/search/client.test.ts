@@ -1,244 +1,290 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 
 import { SearchError } from "../../src/search/types.js";
 import type { HttpFetcher } from "../../src/search/client.js";
 
 let searchPerplexity: typeof import("../../src/search/client.js").searchPerplexity;
 
-function createSseResponse(events: Array<Record<string, unknown>>, status = 200): Response {
-  const streamText = [
-    ...events.map((event) => `data: ${JSON.stringify(event)}\n\n`),
-    "data: [DONE]\n\n",
-  ].join("");
-
-  return new Response(streamText, {
-    status,
-    headers: { "content-type": "text/event-stream" },
-  });
+function sseBody(events: Array<Record<string, unknown>>): string {
+	return [
+		...events.map((event) => `data: ${JSON.stringify(event)}\n\n`),
+		"data: [DONE]\n\n",
+	].join("");
 }
 
 describe("searchPerplexity", () => {
-  const originalFetch = globalThis.fetch;
+	beforeEach(async () => {
+		const mod = await import(`../../src/search/client.ts?t=${Date.now()}`);
+		searchPerplexity = mod.searchPerplexity;
+	});
 
-  beforeEach(async () => {
-    const mod = await import(`../../src/search/client.ts?t=${Date.now()}`);
-    searchPerplexity = mod.searchPerplexity;
-  });
+	test("builds request body and headers according to protocol", async () => {
+		let capturedUrl = "";
+		let capturedHeaders: Record<string, string> = {};
+		let capturedBody = "";
+		let capturedSignal: AbortSignal | undefined;
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
+		const fakeHttp = async (
+			url: string,
+			headers: Record<string, string>,
+			body: string,
+			signal: AbortSignal | undefined,
+		) => {
+			capturedUrl = url;
+			capturedHeaders = headers;
+			capturedBody = body;
+			capturedSignal = signal;
+			return {
+				status: 200,
+				bodyText: sseBody([
+					{
+						status: "COMPLETED",
+						final: true,
+						blocks: [
+							{ intended_usage: "markdown_block", markdown_block: { answer: "answer text" } },
+							{
+								intended_usage: "web_results",
+								web_result_block: {
+									web_results: [
+										{
+											name: "Source",
+											url: "https://example.com",
+											snippet: "snippet",
+											timestamp: "2026-02-16T10:00:00.000Z",
+										},
+									],
+								},
+							},
+						],
+					},
+				]),
+			};
+		};
 
-  test("builds request body and headers according to protocol", async () => {
-    let capturedUrl: RequestInfo | URL | undefined;
-    let capturedInit: RequestInit | undefined;
+		const controller = new AbortController();
+		const result = await searchPerplexity(
+			{ query: "latest bun release notes", recency: "week", model: "pplx_pro_upgraded", incognito: true },
+			"jwt-token",
+			controller.signal,
+			fakeHttp,
+		);
 
-    globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
-      capturedUrl = url;
-      capturedInit = init;
+		expect(capturedUrl).toBe("https://www.perplexity.ai/rest/sse/perplexity_ask");
+		expect(capturedSignal).toBe(controller.signal);
+		expect(capturedHeaders["Authorization"]).toBe("Bearer jwt-token");
+		expect(capturedHeaders["Accept"]).toBe("text/event-stream");
+		expect(capturedHeaders["X-App-ApiVersion"]).toBe("2.18");
+		expect(capturedHeaders["X-Request-ID"]).toBeTruthy();
 
-      return createSseResponse([
-        {
-          status: "COMPLETED",
-          final: true,
-          blocks: [
-            { intended_usage: "markdown_block", markdown_block: { answer: "answer text" } },
-            {
-              intended_usage: "web_results",
-              web_result_block: {
-                web_results: [
-                  { name: "Source", url: "https://example.com", snippet: "snippet", timestamp: "2026-02-16T10:00:00.000Z" },
-                ],
-              },
-            },
-          ],
-        },
-      ]);
-    }) as unknown as typeof fetch;
+		const body = JSON.parse(capturedBody) as {
+			query_str: string;
+			params: {
+				query_str: string;
+				mode: string;
+				model_preference: string;
+				is_incognito: boolean;
+				search_recency_filter: string | null;
+				frontend_uuid: string;
+				frontend_context_uuid: string;
+			};
+		};
 
-    const controller = new AbortController();
-    const result = await searchPerplexity(
-      { query: "latest bun release notes", recency: "week", model: "pplx_pro_upgraded", incognito: true },
-      "jwt-token",
-      controller.signal,
-    );
+		expect(body.query_str).toBe("latest bun release notes");
+		expect(body.params.query_str).toBe("latest bun release notes");
+		expect(body.params.mode).toBe("copilot");
+		expect(body.params.model_preference).toBe("pplx_pro_upgraded");
+		expect(body.params.is_incognito).toBe(true);
+		expect(body.params.search_recency_filter).toBe("week");
+		expect(body.params.frontend_uuid).toBeTruthy();
+		expect(body.params.frontend_context_uuid).toBeTruthy();
 
-    expect(String(capturedUrl)).toBe("https://www.perplexity.ai/rest/sse/perplexity_ask");
-    expect(capturedInit?.method).toBe("POST");
-    expect(capturedInit?.signal).toBe(controller.signal);
+		expect(result.answer).toBe("answer text");
+		expect(result.sources).toHaveLength(1);
+	});
 
-    const headers = new Headers(capturedInit?.headers);
-    expect(headers.get("Authorization")).toBe("Bearer jwt-token");
-    expect(headers.get("Accept")).toBe("text/event-stream");
-    expect(headers.get("X-App-ApiVersion")).toBe("2.18");
-    expect(headers.get("X-Request-ID")).toBeTruthy();
+	test("passes model and incognito through to request body", async () => {
+		let capturedBody = "";
+		const fakeHttp = async (
+			_url: string,
+			_headers: Record<string, string>,
+			body: string,
+		) => {
+			capturedBody = body;
+			return {
+				status: 200,
+				bodyText: sseBody([{ status: "COMPLETED", final: true, text: "answer", blocks: [] }]),
+			};
+		};
 
-    const body = JSON.parse(String(capturedInit?.body)) as {
-      query_str: string;
-      params: {
-        query_str: string;
-        mode: string;
-        model_preference: string;
-        is_incognito: boolean;
-        search_recency_filter: string | null;
-        frontend_uuid: string;
-        frontend_context_uuid: string;
-      };
-    };
+		await searchPerplexity(
+			{ query: "q", model: "claude46sonnetthinking", incognito: false },
+			"jwt-token",
+			undefined,
+			fakeHttp,
+		);
 
-    expect(body.query_str).toBe("latest bun release notes");
-    expect(body.params.query_str).toBe("latest bun release notes");
-    expect(body.params.mode).toBe("copilot");
-    expect(body.params.model_preference).toBe("pplx_pro_upgraded");
-    expect(body.params.is_incognito).toBe(true);
-    expect(body.params.search_recency_filter).toBe("week");
-    expect(body.params.frontend_uuid).toBeTruthy();
-    expect(body.params.frontend_context_uuid).toBeTruthy();
+		const body = JSON.parse(capturedBody) as {
+			params: { model_preference: string; is_incognito: boolean };
+		};
+		expect(body.params.model_preference).toBe("claude46sonnetthinking");
+		expect(body.params.is_incognito).toBe(false);
+	});
 
-    expect(result.answer).toBe("answer text");
-    expect(result.sources).toHaveLength(1);
-  });
+	test("passes incognito true through to request body", async () => {
+		let capturedBody = "";
+		const fakeHttp = async (_url: string, _headers: Record<string, string>, body: string) => {
+			capturedBody = body;
+			return {
+				status: 200,
+				bodyText: sseBody([{ status: "COMPLETED", final: true, text: "answer", blocks: [] }]),
+			};
+		};
 
-  test("passes model and incognito through to request body", async () => {
-    let capturedInit: RequestInit | undefined;
+		await searchPerplexity(
+			{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+			"jwt-token",
+			undefined,
+			fakeHttp,
+		);
 
-    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
-      capturedInit = init;
-      return createSseResponse([
-        { status: "COMPLETED", final: true, text: "answer", blocks: [] },
-      ]);
-    }) as unknown as typeof fetch;
+		const body = JSON.parse(capturedBody) as { params: { is_incognito: boolean } };
+		expect(body.params.is_incognito).toBe(true);
+	});
 
-    await searchPerplexity(
-      { query: "q", model: "claude46sonnetthinking", incognito: false },
-      "jwt-token",
-    );
+	test("maps 401 and 403 responses to AUTH error", async () => {
+		for (const status of [401, 403]) {
+			const fakeHttp = async () => ({ status, bodyText: "auth fail" });
+			await expect(
+				searchPerplexity(
+					{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+					"jwt",
+					undefined,
+					fakeHttp,
+				),
+			).rejects.toMatchObject({ name: "SearchError", code: "AUTH" });
+		}
+	});
 
-    const body = JSON.parse(String(capturedInit?.body)) as {
-      params: { model_preference: string; is_incognito: boolean };
-    };
-    expect(body.params.model_preference).toBe("claude46sonnetthinking");
-    expect(body.params.is_incognito).toBe(false);
-  });
+	test("maps 429 responses to RATE_LIMIT error", async () => {
+		const fakeHttp = async () => ({ status: 429, bodyText: "rate limited" });
+		await expect(
+			searchPerplexity(
+				{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+				"jwt",
+				undefined,
+				fakeHttp,
+			),
+		).rejects.toMatchObject({ name: "SearchError", code: "RATE_LIMIT" });
+	});
 
-  test("passes incognito true through to request body", async () => {
-    let capturedInit: RequestInit | undefined;
+	test("deduplicates sources by normalized URL", async () => {
+		const fakeHttp = async () => ({
+			status: 200,
+			bodyText: sseBody([
+				{
+					status: "COMPLETED",
+					final: true,
+					blocks: [
+						{ intended_usage: "markdown_block", markdown_block: { answer: "answer text" } },
+						{
+							intended_usage: "web_results",
+							web_result_block: {
+								web_results: [
+									{ name: "A", url: "https://example.com/path" },
+									{ name: "A duplicate", url: "https://example.com/path/" },
+									{ name: "B", url: "https://another.example/path" },
+								],
+							},
+						},
+					],
+				},
+			]),
+		});
 
-    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
-      capturedInit = init;
-      return createSseResponse([
-        { status: "COMPLETED", final: true, text: "answer", blocks: [] },
-      ]);
-    }) as unknown as typeof fetch;
+		const result = await searchPerplexity(
+			{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+			"jwt",
+			undefined,
+			fakeHttp,
+		);
 
-    await searchPerplexity({ query: "q", model: "pplx_pro_upgraded", incognito: true }, "jwt-token");
+		expect(result.sources).toHaveLength(2);
+		expect(result.sources[0].url).toBe("https://example.com/path");
+		expect(result.sources[1].url).toBe("https://another.example/path");
+	});
 
-    const body = JSON.parse(String(capturedInit?.body)) as {
-      params: { is_incognito: boolean };
-    };
-    expect(body.params.is_incognito).toBe(true);
-  });
+	test("answer extraction prioritizes markdown_block over ask_text and text", async () => {
+		const fakeHttp = async () => ({
+			status: 200,
+			bodyText: sseBody([
+				{
+					status: "COMPLETED",
+					final: true,
+					text: "fallback text",
+					blocks: [
+						{ intended_usage: "ask_text", markdown_block: { answer: "ask text" } },
+						{ intended_usage: "markdown_block", markdown_block: { answer: "markdown answer" } },
+					],
+					sources_list: [{ title: "S", url: "https://example.com" }],
+				},
+			]),
+		});
 
-  test("maps 401 and 403 responses to AUTH error", async () => {
-    for (const status of [401, 403]) {
-      globalThis.fetch = (async () => new Response("auth fail", { status })) as unknown as typeof fetch;
+		const result = await searchPerplexity(
+			{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+			"jwt",
+			undefined,
+			fakeHttp,
+		);
+		expect(result.answer).toBe("markdown answer");
+	});
 
-      await expect(searchPerplexity({ query: "q", model: "pplx_pro_upgraded", incognito: true }, "jwt")).rejects.toMatchObject({
-        name: "SearchError",
-        code: "AUTH",
-      });
-    }
-  });
+	test("answer extraction falls back to ask_text then text", async () => {
+		const fakeHttpAskText = async () => ({
+			status: 200,
+			bodyText: sseBody([
+				{
+					status: "COMPLETED",
+					final: true,
+					text: "fallback text",
+					blocks: [
+						{ intended_usage: "ask_text", markdown_block: { answer: "ask answer" } },
+					],
+					sources_list: [{ title: "S", url: "https://example.com" }],
+				},
+			]),
+		});
 
-  test("maps 429 responses to RATE_LIMIT error", async () => {
-    globalThis.fetch = (async () => new Response("rate limited", { status: 429 })) as unknown as typeof fetch;
+		const askTextResult = await searchPerplexity(
+			{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+			"jwt",
+			undefined,
+			fakeHttpAskText,
+		);
+		expect(askTextResult.answer).toBe("ask answer");
 
-    await expect(searchPerplexity({ query: "q", model: "pplx_pro_upgraded", incognito: true }, "jwt")).rejects.toMatchObject({
-      name: "SearchError",
-      code: "RATE_LIMIT",
-    });
-  });
+		const fakeHttpText = async () => ({
+			status: 200,
+			bodyText: sseBody([
+				{
+					status: "COMPLETED",
+					final: true,
+					text: "text fallback",
+					sources_list: [{ title: "S", url: "https://example.com" }],
+				},
+			]),
+		});
 
-  test("deduplicates sources by normalized URL", async () => {
-    globalThis.fetch = (async () =>
-      createSseResponse([
-        {
-          status: "COMPLETED",
-          final: true,
-          blocks: [
-            { intended_usage: "markdown_block", markdown_block: { answer: "answer text" } },
-            {
-              intended_usage: "web_results",
-              web_result_block: {
-                web_results: [
-                  { name: "A", url: "https://example.com/path" },
-                  { name: "A duplicate", url: "https://example.com/path/" },
-                  { name: "B", url: "https://another.example/path" },
-                ],
-              },
-            },
-          ],
-        },
-      ])) as unknown as typeof fetch;
+		const textResult = await searchPerplexity(
+			{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+			"jwt",
+			undefined,
+			fakeHttpText,
+		);
+		expect(textResult.answer).toBe("text fallback");
+	});
 
-    const result = await searchPerplexity({ query: "q", model: "pplx_pro_upgraded", incognito: true }, "jwt");
-
-    expect(result.sources).toHaveLength(2);
-    expect(result.sources[0].url).toBe("https://example.com/path");
-    expect(result.sources[1].url).toBe("https://another.example/path");
-  });
-
-  test("answer extraction prioritizes markdown_block over ask_text and text", async () => {
-    globalThis.fetch = (async () =>
-      createSseResponse([
-        {
-          status: "COMPLETED",
-          final: true,
-          text: "fallback text",
-          blocks: [
-            { intended_usage: "ask_text", markdown_block: { answer: "ask text" } },
-            { intended_usage: "markdown_block", markdown_block: { answer: "markdown answer" } },
-          ],
-          sources_list: [{ title: "S", url: "https://example.com" }],
-        },
-      ])) as unknown as typeof fetch;
-
-    const result = await searchPerplexity({ query: "q", model: "pplx_pro_upgraded", incognito: true }, "jwt");
-    expect(result.answer).toBe("markdown answer");
-  });
-
-  test("answer extraction falls back to ask_text then text", async () => {
-    globalThis.fetch = (async () =>
-      createSseResponse([
-        {
-          status: "COMPLETED",
-          final: true,
-          text: "fallback text",
-          blocks: [
-            { intended_usage: "ask_text", markdown_block: { answer: "ask answer" } },
-          ],
-          sources_list: [{ title: "S", url: "https://example.com" }],
-        },
-      ])) as unknown as typeof fetch;
-
-    const askTextResult = await searchPerplexity({ query: "q", model: "pplx_pro_upgraded", incognito: true }, "jwt");
-    expect(askTextResult.answer).toBe("ask answer");
-
-    globalThis.fetch = (async () =>
-      createSseResponse([
-        {
-          status: "COMPLETED",
-          final: true,
-          text: "text fallback",
-          sources_list: [{ title: "S", url: "https://example.com" }],
-        },
-      ])) as unknown as typeof fetch;
-
-    const textResult = await searchPerplexity({ query: "q", model: "pplx_pro_upgraded", incognito: true }, "jwt");
-    expect(textResult.answer).toBe("text fallback");
-  });
-
-  test("uses the injected http fetcher instead of node-tls-client when provided", async () => {
+	test("uses the injected http fetcher instead of node-tls-client when provided", async () => {
 		const calls: Array<{ url: string; headers: Record<string, string>; body: string }> = [];
 		const fakeHttp: HttpFetcher = async (url, headers, body) => {
 			calls.push({ url, headers, body });
@@ -265,18 +311,18 @@ describe("searchPerplexity", () => {
 		expect(result.answer).toBe("hi");
 	});
 
-  test("returns EMPTY error when response has no answer and no sources", async () => {
-    globalThis.fetch = (async () =>
-      createSseResponse([{ status: "COMPLETED", final: true }])) as unknown as typeof fetch;
-
-    let thrown: unknown;
-    try {
-      await searchPerplexity({ query: "q", model: "pplx_pro_upgraded", incognito: true }, "jwt");
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBeInstanceOf(SearchError);
-    expect((thrown as SearchError).code).toBe("EMPTY");
-  });
+	test("returns EMPTY error when response has no answer and no sources", async () => {
+		const fakeHttp = async () => ({
+			status: 200,
+			bodyText: sseBody([{ status: "COMPLETED", final: true }]),
+		});
+		await expect(
+			searchPerplexity(
+				{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+				"jwt",
+				undefined,
+				fakeHttp,
+			),
+		).rejects.toMatchObject({ name: "SearchError", code: "EMPTY" });
+	});
 });

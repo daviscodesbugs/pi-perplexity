@@ -4,9 +4,10 @@ A [pi](https://github.com/badlogic/pi-mono) extension that gives your coding age
 ## Requirements
 
 - [pi](https://github.com/badlogic/pi-mono) coding agent
-- [Bun](https://bun.sh) runtime (available on `PATH`)
+- Node.js ≥ 20 (provided by pi)
 - A **Perplexity Pro** or **Max** subscription
 - macOS (for zero-interaction auth) _or_ an interactive terminal (for email OTP)
+- Supported platforms: Windows / macOS / Linux on x64 or arm64
 
 ## Installation
 
@@ -87,17 +88,21 @@ Queries default to `is_incognito: true`, but you can override that per call or v
 
 ## How It Works
 
-The extension calls Perplexity's internal SSE endpoint (`perplexity_ask`) using your subscription credentials obtained from the macOS app or via email OTP. Responses stream as incremental events that are merged into a final result.
+The extension calls Perplexity's internal SSE endpoint (`perplexity_ask`) using your subscription credentials obtained from the macOS app or via email OTP. Responses are buffered, parsed as SSE events, and merged into a final result.
 
-When pi loads extensions under Node/jiti, direct `fetch` to Perplexity gets Cloudflare-challenged, so the search client shells out to a Bun subprocess — that's the only reason Bun is required.
+Cloudflare TLS-fingerprints the endpoint, so Node's built-in `fetch` gets challenged. The search client uses [`node-tls-client`](https://www.npmjs.com/package/node-tls-client) — a small native module that ships prebuilt binaries per OS/arch and impersonates a recent Chrome TLS handshake — so requests pass without needing an external runtime. If Cloudflare eventually moves the goalposts, the error message will say so and a package update will be all that's needed.
 
 ## Development
+
+End users don't need Bun. Contributors do, because the test suite uses `bun:test`:
 
 ```bash
 bun install        # Install dev dependencies
 bun test           # Run tests
 bunx tsc --noEmit  # Type check
 ```
+
+A future change may migrate tests to a Node-native runner; for now, Bun-on-PATH is required only for development.
 
 Optional live model-selection E2E test (requires cached auth from `/perplexity-login`):
 

@@ -1,3 +1,5 @@
+> **Historical note:** End-user Bun requirement was removed in v0.3.0. See `docs/specs/2026-05-15-remove-bun-dependency-design.md` for that change. This document predates that work and references Bun throughout — treat as historical implementation notes.
+
 # pi-perplexity Implementation Plan
 
 ## Prerequisites

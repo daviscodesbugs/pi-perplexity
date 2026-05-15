@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-15
+
+### Changed
+
+- **End users no longer need Bun on PATH.** The search client now uses [`node-tls-client`](https://www.npmjs.com/package/node-tls-client), a small native module with prebuilt binaries per OS/arch, instead of shelling out to a Bun subprocess for Cloudflare bypass. Bun stays in `devDependencies` for the test suite only.
+- Pinned Chrome TLS impersonation profile to `chrome_131`. If Cloudflare detection changes and this profile is rejected, a clear "Cloudflare blocked" error message will surface, and a package update with a newer profile will restore service.
+
+### Added
+
+- Detection of Cloudflare challenge responses (status 403 + CF markers in body) with a dedicated error message pointing users to update.
+
+### Removed
+
+- `fetchViaBunRuntime` and the Bun-subprocess code path in `src/search/client.ts`.
+- `bun` from runtime `dependencies` and `engines`.
+
+### Supported Platforms
+
+Windows / macOS / Linux on x64 or arm64. Other platforms (e.g. musl/alpine) may not have `node-tls-client` prebuilds — please open an issue if you need one.
+
 ## [0.2.1] - 2026-05-11
 
 ### Changed

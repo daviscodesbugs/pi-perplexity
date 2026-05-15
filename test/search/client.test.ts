@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { SearchError } from "../../src/search/types.js";
+import type { HttpFetcher } from "../../src/search/client.js";
 
 let searchPerplexity: typeof import("../../src/search/client.js").searchPerplexity;
 
@@ -236,6 +237,33 @@ describe("searchPerplexity", () => {
     const textResult = await searchPerplexity({ query: "q", model: "pplx_pro_upgraded", incognito: true }, "jwt");
     expect(textResult.answer).toBe("text fallback");
   });
+
+  test("uses the injected http fetcher instead of node-tls-client when provided", async () => {
+		const calls: Array<{ url: string; headers: Record<string, string>; body: string }> = [];
+		const fakeHttp: HttpFetcher = async (url, headers, body) => {
+			calls.push({ url, headers, body });
+			return {
+				status: 200,
+				bodyText:
+					'data: {"status":"COMPLETED","final":true,"blocks":[' +
+					'{"intended_usage":"markdown_block","markdown_block":{"answer":"hi"}}' +
+					']}\n\n' +
+					'data: [DONE]\n\n',
+			};
+		};
+
+		const result = await searchPerplexity(
+			{ query: "q", model: "pplx_pro_upgraded", incognito: true },
+			"jwt",
+			undefined,
+			fakeHttp,
+		);
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0].url).toBe("https://www.perplexity.ai/rest/sse/perplexity_ask");
+		expect(calls[0].headers["Authorization"]).toBe("Bearer jwt");
+		expect(result.answer).toBe("hi");
+	});
 
   test("returns EMPTY error when response has no answer and no sources", async () => {
     globalThis.fetch = (async () =>
